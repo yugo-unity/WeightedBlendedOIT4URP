@@ -78,6 +78,7 @@ struct Varyings
 #endif
 
     float4 positionCS           : SV_POSITION; // Clip-space position
+    float cameraZ : TEXCOORD9;
 
     UNITY_VERTEX_INPUT_INSTANCE_ID
     UNITY_VERTEX_OUTPUT_STEREO
@@ -87,7 +88,21 @@ struct Varyings
 
 inline float CalcWeight(float z, float alpha)
 {
-    return alpha * max(1e-2, min(3 * 1e3, 0.03 / (1e-5 + pow(z / 200, 4))));
+    // 元の数式ままなので max/min を clamp に置き換えたり整理可能
+    // 近似曲線はNVIDIAのドキュメント参照
+    // https://jcgt.org/published/0002/02/09/
+    // かなり
+
+    // (eq.7)
+    return alpha * max(1e-2, min(3 * 1e3, 10.0/(1e-5 + pow(z/5, 2) + pow(z/200, 6))));
+
+    // (eq.8)
+    //return alpha * max(1e-2, min(3 * 1e3, 10.0/(1e-5 + pow(z/10, 3) + pow(z/200, 6))));
+    
+    // (eq.9)
+    //return alpha * max(1e-2, min(3 * 1e3, 0.03/(1e-5 + pow(z/200, 4))));
+
+    // eq.10はZ範囲を決める必要があるので割愛
 }
 
 // ====== Lighting functions
@@ -190,6 +205,10 @@ Varyings LitForwardVert(Attributes input)
     // No vertex lights, so fogFactor singular variable
     output.fogFactor = fogFactor;
 #endif
+
+    // for Weighted Blend
+    // clampいらないかも
+    output.cameraZ = clamp(abs(mul(UNITY_MATRIX_MV, input.positionOS).z), 0.1, 500);
 
     return output;
 }
@@ -466,9 +485,9 @@ void LitForwardFrag(Varyings input, out float4 color : SV_Target0, out float4 al
 
     // Weighted Blended.........
     //return color;
-    alpha = color.a;
+    alpha = color.aaaa;
     color = float4(color.rgb * color.a, color.a);
-    color *= CalcWeight(input.positionCS.z, color.a);
+    color *= CalcWeight(input.cameraZ, color.a);
 }
 
 #endif

@@ -7,6 +7,7 @@ Shader "WBOIT/Blit"
 		Cull Off
 		ZTest Always
 		ZWrite Off
+		Blend Off
 		//Fog { Mode Off }
 
 		Pass {
