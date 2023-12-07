@@ -9,8 +9,7 @@ namespace WBOIT
     public class WBOITPass : ScriptableRenderPass
     {
         FilteringSettings filteringSettings;
-        RenderStateBlock renderStateBlock;
-        ShaderTagId wboitTag = new ShaderTagId("WeightedBlendedOIT");
+        ShaderTagId wboitTag = new ("WeightedBlendedOIT");
         Material blendMat = null;
 
         RTHandle accumulate, revealage, destination;
@@ -35,7 +34,6 @@ namespace WBOIT
                 ? RenderQueueRange.transparent
                 : RenderQueueRange.opaque;
             this.filteringSettings = new FilteringSettings(renderQueueRange, settings.layerMask);
-            this.renderStateBlock = new RenderStateBlock(RenderStateMask.Nothing);
 
             this.blendMat = CoreUtils.CreateEngineMaterial("WBOIT/Blit");
             Debug.Assert(this.blendMat != null);
@@ -48,9 +46,9 @@ namespace WBOIT
         {
             var desc = cameraData.cameraTargetDescriptor;
             desc.msaaSamples = 1; // no MSAA
-            desc.depthBufferBits = 0; // no depth  
-            desc.graphicsFormat = GraphicsFormat.R32G32B32A32_SFloat; // need 32bit alpha channel
-            if (RenderingUtils.ReAllocateIfNeeded(ref this.accumulate, desc, FilterMode.Point,
+            desc.depthBufferBits = 0; // no depth
+            desc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat; // use 32bit channel if need
+            if (RenderingUtils.ReAllocateIfNeeded(ref this.accumulate, desc, FilterMode.Bilinear,
                     TextureWrapMode.Clamp, false, 1, 0, "_AccumTex"))
             {
                 this.oitBuffers[0] = accumulate;
@@ -60,8 +58,8 @@ namespace WBOIT
             RenderingUtils.ReAllocateIfNeeded(ref this.destination, desc, FilterMode.Bilinear,
                 TextureWrapMode.Clamp, false, 1, 0, "_Destination");
 
-            desc.graphicsFormat = GraphicsFormat.R32_SFloat;
-            if (RenderingUtils.ReAllocateIfNeeded(ref this.revealage, desc, FilterMode.Point,
+            desc.graphicsFormat = GraphicsFormat.R16_SFloat; // use 32bit channel if need
+            if (RenderingUtils.ReAllocateIfNeeded(ref this.revealage, desc, FilterMode.Bilinear,
                     TextureWrapMode.Clamp, false, 1, 0, "_RevealageTex"))
             {
                 this.oitBuffers[1] = revealage;
@@ -72,7 +70,6 @@ namespace WBOIT
         /// <summary>
         /// ready targets
         /// </summary>
-        //public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
         {
             cmd.SetRenderTarget(this.accumulate);
