@@ -86,23 +86,32 @@ struct Varyings
 
 // ====== Weight functions
 
+inline float d(float z)
+{
+    float zNear = 0.1;
+    float zFar  = 500;
+    return ((zNear * zFar) / z - zFar) / (zNear - zFar);  
+}
+
 inline float CalcWeight(float z, float alpha)
 {
     // 元の数式ままなので max/min を clamp に置き換えたり整理可能
     // 近似曲線はNVIDIAのドキュメント参照
     // https://jcgt.org/published/0002/02/09/
-    // かなり
-
+    #ifdef EQ7
     // (eq.7)
     return alpha * max(1e-2, min(3 * 1e3, 10.0/(1e-5 + pow(z/5, 2) + pow(z/200, 6))));
-
+    #elif EQ8
     // (eq.8)
-    //return alpha * max(1e-2, min(3 * 1e3, 10.0/(1e-5 + pow(z/10, 3) + pow(z/200, 6))));
-    
+    return alpha * max(1e-2, min(3 * 1e3, 10.0/(1e-5 + pow(z/10, 3) + pow(z/200, 6))));
+    #elif EQ9    
     // (eq.9)
-    //return alpha * max(1e-2, min(3 * 1e3, 0.03/(1e-5 + pow(z/200, 4))));
-
-    // eq.10はZ範囲を決める必要があるので割愛
+    return alpha * max(1e-2, min(3 * 1e3, 0.03/(1e-5 + pow(z/200, 4))));
+    //#elif EQ10
+    #else
+    // eq.10
+    return alpha * max(1e-2, 3 * 1e3 * (1 - pow(d(z), 3)));
+    #endif
 }
 
 // ====== Lighting functions
@@ -487,7 +496,7 @@ void LitForwardFrag(Varyings input, out float4 color : SV_Target0, out float4 al
     //return color;
     alpha = color.aaaa;
     color = float4(color.rgb * color.a, color.a);
-    color *= CalcWeight(input.cameraZ, color.a);
+    color = float4(color.rgb * color.a * weight, color.a * weight);
 }
 
 #endif

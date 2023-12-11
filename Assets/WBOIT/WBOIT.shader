@@ -38,6 +38,9 @@ Shader "WBOIT/SimpleLitTransparent"
             #pragma vertex LitForwardVert
             #pragma fragment LitForwardFrag
 
+            //#pragma shader_feature_fragment EQ7 EQ8 EQ9
+            #define EQ7
+
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "SimpleLitForwardPass.hlsl"
 
