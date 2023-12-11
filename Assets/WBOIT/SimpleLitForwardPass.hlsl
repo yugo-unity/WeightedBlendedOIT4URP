@@ -494,8 +494,8 @@ void LitForwardFrag(Varyings input, out float4 color : SV_Target0, out float4 al
 
     // Weighted Blended.........
     //return color;
+    const float weight = CalcWeight(input.cameraZ, color.a);
     alpha = color.aaaa;
-    color = float4(color.rgb * color.a, color.a);
     color = float4(color.rgb * color.a * weight, color.a * weight);
 }
 
