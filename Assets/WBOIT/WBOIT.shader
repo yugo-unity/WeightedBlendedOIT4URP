@@ -30,8 +30,13 @@ Shader "WBOIT/SimpleLitTransparent"
 
 			Cull Off
 			ZWrite Off
+			
+			// https://docs.unity3d.com/ja/2022.3/Manual/SL-Blend.html
+			// RenderTargetに対してブレンドを指定
 			Blend 0 One One
 			Blend 1 Zero OneMinusSrcAlpha
+			// α値に対してブレンドを指定
+			//Blend One One, Zero OneMinusSrcAlpha
 
 			HLSLPROGRAM
 

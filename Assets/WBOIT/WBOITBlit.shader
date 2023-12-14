@@ -32,7 +32,13 @@ Shader "WBOIT/Blit"
                 const float4 background = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_BlitTexture, i.texcoord);
 				const float4 accum = SAMPLE_TEXTURE2D_X(_AccumTex, sampler_AccumTex, i.texcoord);
 				const float r = SAMPLE_TEXTURE2D_X(_RevealageTex, sampler_AccumTex, i.texcoord).r;
+				#if 1
+				// ブレンド毎に分ける場合
 				const float4 col = float4(accum.rgb / clamp(accum.a, 1e-4, 5e4), r);
+				#else
+				// α値をまとめてチャンネル別でブレンドを分ける場合
+				const float4 col = float4(accum.rgb / clamp(r.y, 1e-4, 5e4), r.w);
+				#endif
 
 				return (1.0 - col.a) * col + col.a * background;
 			}

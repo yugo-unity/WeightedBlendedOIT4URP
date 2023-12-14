@@ -47,7 +47,9 @@ namespace WBOIT
             var desc = cameraData.cameraTargetDescriptor;
             desc.msaaSamples = 1; // no MSAA
             desc.depthBufferBits = 0; // no depth
-            desc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat; // use 32bit channel if need
+            // NOTE: use 32bit channel if need
+            desc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat; // ブレンド毎に分ける場合
+            //desc.graphicsFormat = GraphicsFormat.B10G11R11_UFloatPack32; // α値をまとめてチャンネル別でブレンドを分ける場合 
             if (RenderingUtils.ReAllocateIfNeeded(ref this.accumulate, desc, FilterMode.Bilinear,
                     TextureWrapMode.Clamp, false, 1, 0, "_AccumTex"))
             {
@@ -58,7 +60,9 @@ namespace WBOIT
             RenderingUtils.ReAllocateIfNeeded(ref this.destination, desc, FilterMode.Bilinear,
                 TextureWrapMode.Clamp, false, 1, 0, "_Destination");
 
-            desc.graphicsFormat = GraphicsFormat.R16_SFloat; // use 32bit channel if need
+            // NOTE: use 32bit channel if need
+            desc.graphicsFormat = GraphicsFormat.R16_SFloat; // ブレンド毎に分ける場合
+            //desc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat; // α値をまとめてチャンネル別でブレンドを分ける場合
             if (RenderingUtils.ReAllocateIfNeeded(ref this.revealage, desc, FilterMode.Bilinear,
                     TextureWrapMode.Clamp, false, 1, 0, "_RevealageTex"))
             {
