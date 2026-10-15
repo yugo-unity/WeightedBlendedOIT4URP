@@ -48,6 +48,7 @@ Shader "WBOIT/SimpleLitTransparent"
             //#pragma shader_feature_fragment EQ7 EQ8 EQ9
             #define EQ7
 
+            // Suggestion from Claude
             // 蓄積パスの検討余地 (未適用)
             // NOTE: 計測ではフラグメントシェーダーを定数出力にしても蓄積パスの時間はほぼ変わらず (重なりの多いシーンで差なし)、
             //       負荷は重なったピクセル数とブレンドの書き込みが支配的だったため、以下はいずれも効果が小さい見込み

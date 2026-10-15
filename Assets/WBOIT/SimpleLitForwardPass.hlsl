@@ -113,6 +113,7 @@ inline float CalcWeight(float z, float alpha)
     return alpha * max(1e-2, 3 * 1e3 * pow(1 - d(z), 3));
     #endif
 
+    // Suggestion from Claude
     // 論文の推奨どおり pow を使わず掛け算で累乗を計算する版 (参考として残す)
     // 計測では pow 版との処理負荷の差は確認できなかった (コンパイラが pow を掛け算に展開していると推測)
     //
