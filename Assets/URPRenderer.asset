@@ -19,6 +19,10 @@ MonoBehaviour:
     layerMask:
       serializedVersion: 2
       m_Bits: 2
+    bufferScale: 1
+    upsampleDepthThreshold: 0.1
+    accumulateShadingRate: 0
+  blitShader: {fileID: 4800000, guid: e8bfc3009de4eb34f8f805f3fd0039bf, type: 3}
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -49,7 +53,7 @@ MonoBehaviour:
   - {fileID: -3162581565859255625}
   m_RendererFeatureMap: b7aac269d2401cd4
   m_UseNativeRenderPass: 0
-  xrSystemData: {fileID: 11400000, guid: 60e1133243b97e347b653163a8c01b64, type: 2}
+  xrSystemData: {fileID: 0}
   postProcessData: {fileID: 11400000, guid: 41439944d30ece34e96484bdb6645b55, type: 2}
   m_AssetVersion: 3
   m_PrepassLayerMask:
