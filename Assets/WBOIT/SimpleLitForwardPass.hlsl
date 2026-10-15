@@ -98,20 +98,53 @@ inline float CalcWeight(float z, float alpha)
     // 元の数式ままなので max/min を clamp に置き換えたり整理可能
     // 近似曲線はNVIDIAのドキュメント参照
     // https://jcgt.org/published/0002/02/09/
-    #ifdef EQ7
+    #if defined(EQ7)
     // (eq.7)
     return alpha * max(1e-2, min(3 * 1e3, 10.0/(1e-5 + pow(z/5, 2) + pow(z/200, 6))));
-    #elif EQ8
+    #elif defined(EQ8)
     // (eq.8)
     return alpha * max(1e-2, min(3 * 1e3, 10.0/(1e-5 + pow(z/10, 3) + pow(z/200, 6))));
-    #elif EQ9    
+    #elif defined(EQ9)
     // (eq.9)
     return alpha * max(1e-2, min(3 * 1e3, 0.03/(1e-5 + pow(z/200, 4))));
     //#elif EQ10
     #else
     // eq.10
-    return alpha * max(1e-2, 3 * 1e3 * (1 - pow(d(z), 3)));
+    return alpha * max(1e-2, 3 * 1e3 * pow(1 - d(z), 3));
     #endif
+
+    // 論文の推奨どおり pow を使わず掛け算で累乗を計算する版 (参考として残す)
+    // 計測では pow 版との処理負荷の差は確認できなかった (コンパイラが pow を掛け算に展開していると推測)
+    //
+    // 更なる高速化の余地 (未適用)
+    // - 補間値の削減: 透視投影なら fragment の SV_POSITION.w がビュー空間深度なので、
+    //   cameraZ (TEXCOORD9) と頂点側の UNITY_MATRIX_MV の乗算を省ける (0.1~500 の clamp は fragment 側へ)
+    //   eq.10 は reversed-Z 環境なら SV_POSITION.z がそのまま 1 - d(z) になり 3e3 * z^3 だけで済む
+    //   ただしカメラ実際の near/far が使われるため、論文の 0.1/500 前提のチューニングからは外れる
+    // - ビルボード/パーティクル: 視線に平行なビルボードは z が一様なので重みを頂点で計算できる (論文の示唆)
+    //   通常メッシュでは非線形な値の補間になるため不可
+    // - 精度: eq.8 の (z/10)^3 は z=500 で 125000 となり half の最大値 (65504) を超えるため中間計算は float のまま
+    //#if defined(EQ7)
+    //// (eq.7)
+    //float a = z * (1.0 / 5.0), b = z * (1.0 / 200.0), b2 = b * b;
+    //float w = 10.0 / (1e-5 + a * a + b2 * b2 * b2);
+    //#elif defined(EQ8)
+    //// (eq.8)
+    //float a = z * (1.0 / 10.0), b = z * (1.0 / 200.0), b2 = b * b;
+    //float w = 10.0 / (1e-5 + a * a * a + b2 * b2 * b2);
+    //#elif defined(EQ9)
+    //// (eq.9)
+    //float b = z * (1.0 / 200.0), b2 = b * b;
+    //float w = 0.03 / (1e-5 + b2 * b2);
+    //#else
+    //// (eq.10) α * max(1e-2, 3e3 * (1 - d(z))^3)
+    //// 1 - d(z) = n(f - z) / (z(f - n)) = (n f / (f - n)) / z - n / (f - n)  (d(z) の n/f と同じ値)
+    //const float n = 0.1, f = 500.0;
+    //// z >= n では od <= 1 なので上限 3e3 の clamp は論文式と等価
+    //float od = (n * f / (f - n)) / z - n / (f - n);
+    //float w = 3e3 * od * od * od;
+    //#endif
+    //return alpha * clamp(w, 1e-2, 3e3);
 }
 
 // ====== Lighting functions
