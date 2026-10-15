@@ -1,6 +1,6 @@
 using UnityEngine;
-using UnityEngine.Experimental.Rendering.Universal;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.Experimental.Rendering;
 
@@ -12,23 +12,21 @@ namespace WBOIT
         ShaderTagId wboitTag = new ("WeightedBlendedOIT");
         Material blendMat = null;
 
-        RTHandle accumulate, revealage, destination;
-        RTHandle[] oitBuffers = new RTHandle[2];
-
-        // int m_destinationID;
         static readonly int m_accumTexID = Shader.PropertyToID("_AccumTex");
         static readonly int m_revealageTexID = Shader.PropertyToID("_RevealageTex");
 
-        /// <summary>
-        /// constructor
-        /// </summary>
-        /// <param name="renderPassEvent"></param>
-        /// <param name="renderQueueType"></param>
-        /// <param name="layerMask"></param>
+        // NOTE: use 32bit channel if need
+        const GraphicsFormat k_AccumFormat = GraphicsFormat.R16G16B16A16_SFloat; // ブレンド毎に分ける場合
+        //const GraphicsFormat k_AccumFormat = GraphicsFormat.B10G11R11_UFloatPack32; // α値をまとめてチャンネル別でブレンドを分ける場合
+        const GraphicsFormat k_RevealageFormat = GraphicsFormat.R16_SFloat; // ブレンド毎に分ける場合
+        //const GraphicsFormat k_RevealageFormat = GraphicsFormat.R16G16B16A16_SFloat; // α値をまとめてチャンネル別でブレンドを分ける場合
+
         public WBOITPass(in FeatureSettings settings)
         {
             this.profilingSampler = new ProfilingSampler(nameof(WBOITPass));
             this.renderPassEvent = settings.renderPassEvent;
+            // NOTE: OITバッファとカメラデプスを同じRenderPassで使うのでバックバッファ直書きを避ける
+            this.requiresIntermediateTexture = true;
 
             var renderQueueRange = (settings.renderQueueType == RenderQueueType.Transparent)
                 ? RenderQueueRange.transparent
@@ -39,91 +37,100 @@ namespace WBOIT
             Debug.Assert(this.blendMat != null);
         }
 
-        /// <summary>
-        /// create buffers
-        /// </summary>
-        public void Setup(in CameraData cameraData)
-        {
-            var desc = cameraData.cameraTargetDescriptor;
-            desc.msaaSamples = 1; // no MSAA
-            desc.depthBufferBits = 0; // no depth
-            // NOTE: use 32bit channel if need
-            desc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat; // ブレンド毎に分ける場合
-            //desc.graphicsFormat = GraphicsFormat.B10G11R11_UFloatPack32; // α値をまとめてチャンネル別でブレンドを分ける場合 
-            if (RenderingUtils.ReAllocateIfNeeded(ref this.accumulate, desc, FilterMode.Bilinear,
-                    TextureWrapMode.Clamp, false, 1, 0, "_AccumTex"))
-            {
-                this.oitBuffers[0] = accumulate;
-                this.blendMat.SetTexture(m_accumTexID, accumulate);
-            }
-
-            RenderingUtils.ReAllocateIfNeeded(ref this.destination, desc, FilterMode.Bilinear,
-                TextureWrapMode.Clamp, false, 1, 0, "_Destination");
-
-            // NOTE: use 32bit channel if need
-            desc.graphicsFormat = GraphicsFormat.R16_SFloat; // ブレンド毎に分ける場合
-            //desc.graphicsFormat = GraphicsFormat.R16G16B16A16_SFloat; // α値をまとめてチャンネル別でブレンドを分ける場合
-            if (RenderingUtils.ReAllocateIfNeeded(ref this.revealage, desc, FilterMode.Bilinear,
-                    TextureWrapMode.Clamp, false, 1, 0, "_RevealageTex"))
-            {
-                this.oitBuffers[1] = revealage;
-                this.blendMat.SetTexture(m_revealageTexID, revealage);
-            }
-        }
-
-        /// <summary>
-        /// ready targets
-        /// </summary>
-        public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
-        {
-            cmd.SetRenderTarget(this.accumulate);
-            cmd.ClearRenderTarget(false, true, Color.clear);
-
-            cmd.SetRenderTarget(this.revealage);
-            cmd.ClearRenderTarget(false, true, Color.white);
-
-            this.ConfigureTarget(this.oitBuffers, renderingData.cameraData.renderer.cameraDepthTargetHandle);
-        }
-
-        /// <summary>
-        /// release
-        /// </summary>
         public void Dispose()
         {
-            this.accumulate?.Release();
-            this.revealage?.Release();
-            this.destination?.Release();
-            this.oitBuffers = null;
             CoreUtils.Destroy(this.blendMat);
             this.blendMat = null;
         }
 
-        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+        #region RenderGraph
+        class AccumulatePassData
         {
-            var cmd = CommandBufferPool.Get();
-            cmd.Clear();
-            using (new ProfilingScope(cmd, this.profilingSampler))
+            public RendererListHandle rendererList;
+        }
+
+        class CompositePassData
+        {
+            public TextureHandle accumulate;
+            public TextureHandle revealage;
+            public Material material;
+        }
+
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
+        {
+            var resourceData = frameData.Get<UniversalResourceData>();
+            var renderingData = frameData.Get<UniversalRenderingData>();
+            var cameraData = frameData.Get<UniversalCameraData>();
+            var lightData = frameData.Get<UniversalLightData>();
+
+            // NOTE: requiresIntermediateTextureで回避されるはずだが念のため
+            if (resourceData.isActiveTargetBackBuffer)
+                return;
+
+            var cameraColor = resourceData.activeColorTexture;
+            var cameraDepth = resourceData.activeDepthTexture;
+
+            // create buffers
+            // NOTE: デプスと同じRenderPassで使うためMSAAのサンプル数はカメラカラーに合わせる
+            var desc = renderGraph.GetTextureDesc(cameraColor);
+            desc.filterMode = FilterMode.Bilinear;
+            desc.wrapMode = TextureWrapMode.Clamp;
+            desc.bindTextureMS = false;
+            desc.clearBuffer = true;
+
+            desc.name = "_AccumTex";
+            desc.format = k_AccumFormat;
+            desc.clearColor = Color.clear;
+            var accumulate = renderGraph.CreateTexture(desc);
+
+            desc.name = "_RevealageTex";
+            desc.format = k_RevealageFormat;
+            desc.clearColor = Color.white;
+            var revealage = renderGraph.CreateTexture(desc);
+
+            // Render Transparents
+            using (var builder = renderGraph.AddRasterRenderPass<AccumulatePassData>("WBOIT Accumulate", out var passData, this.profilingSampler))
             {
-                // Render Transparents
                 var sortingCriteria = (this.filteringSettings.renderQueueRange == RenderQueueRange.transparent)
                     ? SortingCriteria.CommonTransparent
-                    : renderingData.cameraData.defaultOpaqueSortFlags;
-                var drawSettings = CreateDrawingSettings(this.wboitTag, ref renderingData, sortingCriteria);
-                
-                //context.DrawRenderers(renderingData.cullResults, ref drawSettings, ref this.filteringSettings, ref renderStateBlock);
+                    : cameraData.defaultOpaqueSortFlags;
+                var drawSettings = RenderingUtils.CreateDrawingSettings(this.wboitTag, renderingData, cameraData, lightData, sortingCriteria);
                 var param = new RendererListParams(renderingData.cullResults, drawSettings, this.filteringSettings);
-                var rl = context.CreateRendererList(ref param);
-                cmd.DrawRendererList(rl);
-                
-                // Blend
-                // NOTE: color attachment bufferとdestination bufferをswapさせた方がいいかも
-                var cameraColorHandle = renderingData.cameraData.renderer.cameraColorTargetHandle;
-                this.Blit(cmd, cameraColorHandle, this.destination, this.blendMat);
-                this.Blit(cmd, this.destination, cameraColorHandle);
+                passData.rendererList = renderGraph.CreateRendererList(param);
+
+                builder.UseRendererList(passData.rendererList);
+                builder.SetRenderAttachment(accumulate, 0, AccessFlags.Write);
+                builder.SetRenderAttachment(revealage, 1, AccessFlags.Write);
+                builder.SetRenderAttachmentDepth(cameraDepth, AccessFlags.Read);
+                // シャドウマップ等のグローバルテクスチャを参照するため
+                builder.UseAllGlobalTextures(true);
+
+                builder.SetRenderFunc(static (AccumulatePassData data, RasterGraphContext context) =>
+                {
+                    context.cmd.DrawRendererList(data.rendererList);
+                });
             }
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
+
+            // Blend
+            // NOTE: (1 - r) * col + r * background をハードウェアブレンドで行うのでコピー不要
+            using (var builder = renderGraph.AddRasterRenderPass<CompositePassData>("WBOIT Composite", out var passData, this.profilingSampler))
+            {
+                passData.accumulate = accumulate;
+                passData.revealage = revealage;
+                passData.material = this.blendMat;
+
+                builder.UseTexture(accumulate, AccessFlags.Read);
+                builder.UseTexture(revealage, AccessFlags.Read);
+                builder.SetRenderAttachment(cameraColor, 0, AccessFlags.ReadWrite);
+
+                builder.SetRenderFunc(static (CompositePassData data, RasterGraphContext context) =>
+                {
+                    data.material.SetTexture(m_accumTexID, data.accumulate);
+                    data.material.SetTexture(m_revealageTexID, data.revealage);
+                    Blitter.BlitTexture(context.cmd, new Vector4(1f, 1f, 0f, 0f), data.material, 0);
+                });
+            }
         }
+        #endregion
     }
 }
-
